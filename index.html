@@ -18,6 +18,7 @@
             '<div style="border:1px solid #d5dbe3;background:#fff;padding:1.25rem"><h1 style="font-size:1.1rem;margin:0 0 .75rem">' + title + '</h1>' + body + '</div></main>';
         }
         function esc(t) { return String(t).replace(/</g, "&lt;"); }
+        function needsServer() { return location.protocol === "file:" && !!document.querySelector('script[type="module"][src]'); }
         function fileBox() {
           box("Stai aprendo il file nel modo sbagliato",
               '<p style="font-size:.9rem">L\'app non si apre con un doppio clic sul file. Va avviata dal terminale:</p>' +
@@ -25,7 +26,7 @@
               '<li>Scrivi <code>npm run dev</code> e premi Invio</li><li>Apri nel browser l\'indirizzo che compare (di solito <code>http://localhost:5173</code>)</li></ol>');
         }
         function failed(msg) {
-          if (location.protocol === "file:") return fileBox();
+          if (needsServer()) return fileBox();
           box("L'app non è partita",
             '<p style="font-size:.85rem;color:#b91c1c;word-break:break-word;font-family:monospace">' + esc(msg) + '</p>' +
             '<p style="font-size:.85rem">Controlla il file <code>.env</code>, poi ferma il programma (Ctrl+C) e riavvialo con <code>npm run dev</code>.</p>');
@@ -33,7 +34,7 @@
         window.addEventListener("error", function (e) { setTimeout(function () { failed(e.message || "errore nel caricamento di un file"); }, 300); }, true);
         window.addEventListener("unhandledrejection", function (e) { setTimeout(function () { failed((e.reason && e.reason.message) || e.reason); }, 300); });
         setTimeout(function () {
-          if (location.protocol === "file:") {
+          if (needsServer()) {
             fileBox();
           } else {
             box("L'app non si è avviata",

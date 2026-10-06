@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
+import { clearStoredConfig } from "@/lib/config";
 import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
@@ -31,6 +32,9 @@ export default function LoginPage() {
         <button className="btn w-full" disabled={busy}>{mode === "login" ? "Accedi" : "Crea account"}</button>
         <button type="button" className="w-full text-sm text-brand underline" onClick={() => setMode(mode === "login" ? "signup" : "login")}>
           {mode === "login" ? "Primo accesso? Crea l'account" : "Ho già un account"}
+        </button>
+        <button type="button" className="w-full text-xs text-steel underline" onClick={() => { clearStoredConfig(); window.location.reload(); }}>
+          Cambia progetto Supabase
         </button>
       </form>
     </main>

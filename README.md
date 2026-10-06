@@ -15,7 +15,11 @@ Progetto **indipendente**: ha il proprio database Supabase e non condivide codic
 Preventivi, fatture, magazzino, agenda, gestione tecnici/turni, fornitori, marketing, documenti e firma digitale, app dedicata al tecnico, WhatsApp/SMS/Google Calendar,
 e soprattutto **la risposta alle telefonate vere** (serve un numero e un provider telefonico, es. Twilio, più un servizio vocale: oggi Sara parla con chi si presenta o scrive).
 
-## Installazione
+## Il modo più semplice: un solo file, senza installare niente
+Scarica `sara-gest.html` (qui nel repository), aprilo con un doppio clic in **Chrome o Edge** e, al primo avvio, incolla il *Project URL* e la chiave *anon public* del tuo progetto Supabase (Project Settings → API). I dati restano nel browser.
+Il file si rigenera con `npm run build:single` (poi copia `dist-single/index.html` in `sara-gest.html`). Limite: aperto da file, il browser chiede il permesso del microfono a ogni apertura.
+
+## Installazione per sviluppatori
 1. Crea un progetto Supabase **nuovo** (solo per Sara Gest) ed esegui `supabase/schema.sql` nell'SQL Editor (rieseguibile).
 2. `cp .env.example .env` e inserisci indirizzo e chiave anon del progetto.
 3. `npm install && npm run dev` (porta 5173). Registra il primo account: sarà il titolare.
