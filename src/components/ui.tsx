@@ -22,7 +22,7 @@ export function Button({ variant = "default", size = "default", className, ...p 
 }
 
 export const Card = ({ className, ...p }: HTMLAttributes<HTMLDivElement>) => <div className={clsx("box", className)} {...p} />;
-export const CardHeader = ({ className, ...p }: HTMLAttributes<HTMLDivElement>) => <div className={clsx("flex flex-col p-4 pb-2", className)} {...p} />;
+export const CardHeader = ({ className, ...p }: HTMLAttributes<HTMLDivElement>) => <div className={clsx("p-4 pb-2", className)} {...p} />;
 export const CardTitle = ({ className, ...p }: HTMLAttributes<HTMLHeadingElement>) => <h3 className={clsx("text-sm font-semibold text-steel", className)} {...p} />;
 export const CardContent = ({ className, ...p }: HTMLAttributes<HTMLDivElement>) => <div className={clsx("p-4 pt-2", className)} {...p} />;
 export const Input = ({ className, ...p }: InputHTMLAttributes<HTMLInputElement>) => <input className={clsx("field", className)} {...p} />;

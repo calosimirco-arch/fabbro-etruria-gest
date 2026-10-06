@@ -133,7 +133,7 @@ function Conversation({ sara }: { sara: ReturnType<typeof useSara> }) {
 
   return (
     <Card className="lg:col-span-2">
-      <CardHeader className="flex-row items-center justify-between space-y-0">
+      <CardHeader className="flex flex-wrap items-center justify-between gap-2">
         <CardTitle>Conversazione {sara.speaking && <span className="text-primary">· Sara sta parlando</span>}</CardTitle>
         <div className="flex gap-2">
           {sara.inCall ? (
