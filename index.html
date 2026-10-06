@@ -7,6 +7,21 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Rete di sicurezza: se l'app non parte per un errore, mostra il messaggio invece di una pagina bianca.
+      (function () {
+        function show(msg) {
+          var root = document.getElementById("root");
+          if (!root || root.children.length) return;
+          root.innerHTML = '<main style="max-width:36rem;margin:2rem auto;padding:1rem;font-family:sans-serif">' +
+            '<div style="border:1px solid #d5dbe3;background:#fff;padding:1.25rem"><h1 style="font-size:1.1rem;margin:0 0 .5rem">L\'app non è partita</h1>' +
+            '<p style="font-size:.85rem;color:#b91c1c;word-break:break-word;font-family:monospace">' + String(msg).replace(/</g, "&lt;") + '</p>' +
+            '<p style="font-size:.85rem">Controlla il file <code>.env</code>, poi ferma l\'app (Ctrl+C) e riavviala con <code>npm run dev</code>.</p></div></main>';
+        }
+        window.addEventListener("error", function (e) { setTimeout(function () { show(e.message); }, 300); });
+        window.addEventListener("unhandledrejection", function (e) { setTimeout(function () { show(e.reason && e.reason.message || e.reason); }, 300); });
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

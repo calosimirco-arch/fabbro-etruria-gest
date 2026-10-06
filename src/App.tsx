@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
-import { isConfigured, urlProblem } from "@/lib/supabase";
+import { configProblem, isConfigured } from "@/lib/supabase";
 import ClientsPage from "@/pages/ClientsPage";
 import HomePage from "@/pages/HomePage";
 import InterventionsPage from "@/pages/InterventionsPage";
@@ -11,12 +11,12 @@ import SaraPage from "@/pages/SaraPage";
 export default function App() {
   const { session, profile, loading } = useAuth();
 
-  if (!isConfigured || urlProblem) {
+  if (!isConfigured) {
     return (
       <main className="mx-auto max-w-xl p-6">
         <div className="box space-y-2 p-5 text-sm">
           <h1 className="text-lg font-semibold">Configurazione da sistemare</h1>
-          <p>{urlProblem ?? "Nel file .env mancano l'indirizzo o la chiave del progetto (VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY): nessuna delle due può essere vuota."}</p>
+          <p>{configProblem}</p>
           <p>Il file si chiama <code>.env</code> (vedi <code>.env.example</code>). Dopo ogni modifica ferma l'app (Ctrl+C) e riavviala con <code>npm run dev</code>.</p>
         </div>
       </main>
