@@ -32,3 +32,14 @@ export interface Quote {
   client?: Pick<Client, "name" | "phone" | "email" | "address"> | null;
   items?: QuoteItem[];
 }
+
+export type InvoiceStatus = "in_attesa" | "pagata" | "annullata";
+export type PaymentMethod = "bonifico" | "contanti" | "carta" | "assegno" | "altro";
+export interface InvoiceItem { id: string; invoice_id: string; position: number; description: string; quantity: number; unit_price: number; vat_rate: number }
+export interface Invoice {
+  id: string; number: string; client_id: string; quote_id: string | null; title: string; notes: string | null;
+  issue_date: string; due_date: string; status: InvoiceStatus; paid_at: string | null; payment_method: PaymentMethod | null;
+  cancelled_at: string | null; cancel_reason: string | null; created_at: string;
+  client?: Pick<Client, "name" | "phone" | "email" | "address"> | null;
+  items?: InvoiceItem[];
+}

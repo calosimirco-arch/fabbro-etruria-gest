@@ -11,7 +11,7 @@ const TILES: Tile[] = [
   { label: "Interventi", icon: Wrench, to: "/interventi" },
   { label: "Clienti", icon: Users, to: "/clienti", staffOnly: true },
   { label: "Preventivi", icon: FileText, to: "/preventivi", staffOnly: true },
-  { label: "Fatture", icon: Receipt },
+  { label: "Fatture", icon: Receipt, to: "/fatture", staffOnly: true },
   { label: "Magazzino", icon: Package },
   { label: "Agenda", icon: CalendarDays },
   { label: "Tecnici", icon: HardHat },

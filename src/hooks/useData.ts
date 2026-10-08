@@ -52,3 +52,11 @@ export const useCreateQuote = () => useInvalidatingMutation(api.createQuote, [["
 export const useSetQuoteStatus = () =>
   useInvalidatingMutation((v: { id: string; status: Parameters<typeof api.setQuoteStatus>[1] }) => api.setQuoteStatus(v.id, v.status), [["quotes"]]);
 export const useDeleteQuote = () => useInvalidatingMutation(api.deleteQuote, [["quotes"]], "Bozza eliminata");
+
+export const useInvoices = () => useQuery({ queryKey: ["invoices"], queryFn: api.fetchInvoices });
+export const useCreateInvoice = () => useInvalidatingMutation(api.createInvoice, [["invoices"]], "Fattura emessa");
+export const useCreateInvoiceFromQuote = () => useInvalidatingMutation(api.createInvoiceFromQuote, [["invoices"], ["quotes"]], "Fattura creata dal preventivo");
+export const useMarkInvoicePaid = () =>
+  useInvalidatingMutation((v: { id: string; method: Parameters<typeof api.markInvoicePaid>[1] }) => api.markInvoicePaid(v.id, v.method), [["invoices"]], "Pagamento registrato");
+export const useCancelInvoice = () =>
+  useInvalidatingMutation((v: { id: string; reason: string }) => api.cancelInvoice(v.id, v.reason), [["invoices"]], "Fattura annullata");

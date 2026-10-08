@@ -9,11 +9,12 @@ Progetto **indipendente**: ha il proprio database Supabase e non condivide codic
 - **Sara** (`/sara`): conversazione a voce o scritta (domande una alla volta: motivo, nome, telefono, email, indirizzo, urgenza, note), parola di attivazione «Ehi Sara», promemoria («ricordami domani di…»), listino prezzi preimpostato, riconoscimento del tono e dell'urgenza, cliente abituale riconosciuto dal telefono/email.
 - **Conferma obbligatoria**: Conferma/Rifiuta. Solo dopo la conferma si crea il cliente (se nuovo) e l'intervento (un'urgenza → priorità critica).
 - **Preventivi**: bozza → inviato → accettato/rifiutato, voci con quantità, prezzo e IVA, totali in centesimi (niente errori di arrotondamento), stampa/PDF. Quando confermi una richiesta di preventivo di Sara, il cliente (se nuovo) e una bozza già compilata col prezzo di listino compaiono qui. Un preventivo inviato non si modifica più.
+- **Fatture**: emessa completa (numero progressivo per anno SENZA buchi, voci, scadenza a 30 giorni se non indicata), poi non si modifica: si può solo segnare **pagata** (con metodo) o **annullare** (se non pagata). «Scaduta» si calcola dalla data. Riepilogo: da incassare, scadute, incassato nel mese; stampa/PDF. Da un preventivo **accettato** un clic crea la fattura (una sola per preventivo). Sono documenti interni, **non fatture elettroniche** per l'Agenzia delle Entrate.
 - **Clienti**, **Interventi** (nuovo → in corso → chiuso, numero progressivo dato dal database), **Home** con riquadri quadrati.
 - Ruoli: titolare, amministrazione, tecnico (il tecnico vede solo i propri interventi e non usa Sara). Il primo account registrato è il titolare.
 
 ## Non ancora fatto (i riquadri in Home dicono "In arrivo")
-Fatture, magazzino, agenda, gestione tecnici/turni, fornitori, marketing, documenti e firma digitale, app dedicata al tecnico, WhatsApp/SMS/Google Calendar,
+Magazzino, agenda, gestione tecnici/turni, fornitori, marketing, documenti e firma digitale, app dedicata al tecnico, WhatsApp/SMS/Google Calendar,
 e soprattutto **la risposta alle telefonate vere** (serve un numero e un provider telefonico, es. Twilio, più un servizio vocale: oggi Sara parla con chi si presenta o scrive).
 
 ## Il modo più semplice: un solo file, senza installare niente
@@ -27,7 +28,7 @@ Il file si rigenera con `npm run build:single` (poi copia `dist-single/index.htm
 4. Per la voce usa Chrome o Edge (il riconoscimento vocale non c'è in Firefox).
 
 ## Comandi
-`npm run build` · `npm run lint` · `npm test` (logica di Sara) · `npm run test:db` (schema SQL provato su un vero Postgres, 34 controlli)
+`npm run build` · `npm run lint` · `npm test` (logica di Sara) · `npm run test:db` (schema SQL provato su un vero Postgres, 53 controlli)
 
 ## Limiti da conoscere
 - «Ehi Sara» ascolta solo mentre la pagina di Sara è aperta (microfono sempre acceso = batteria e privacy).

@@ -200,6 +200,152 @@ revoke all on quotes, quote_items from anon;
 grant select, insert, update, delete on quotes, quote_items to authenticated;
 
 -- ---------------------------------------------------------
+-- 2c. Fatture (documento interno: NON e' una fattura elettronica da inviare allo SdI)
+-- ---------------------------------------------------------
+-- Una fattura e' un documento contabile: si crea completa con create_invoice (o dal preventivo accettato) e dopo
+-- non si modifica. Cambia solo lo stato: in_attesa -> pagata, oppure in_attesa -> annullata. "Scaduta" non e' uno
+-- stato salvato: lo calcola l'app (in attesa con scadenza passata). Nessuna scrittura diretta sulle tabelle.
+-- La numerazione e' progressiva per anno e SENZA BUCHI: il contatore sta in una tabella e se la creazione fallisce
+-- il numero non si consuma (con una sequenza invece si perderebbe).
+create table if not exists invoice_counters (
+  year integer primary key,
+  last_number integer not null default 0
+);
+
+create table if not exists invoices (
+  id uuid primary key default gen_random_uuid(),
+  number text not null unique,
+  client_id uuid not null references clients (id),
+  quote_id uuid references quotes (id) on delete set null,
+  intervention_id uuid references interventions (id) on delete set null,
+  title text not null check (btrim(title) <> '' and char_length(title) <= 200),
+  notes text check (char_length(notes) <= 2000),
+  issue_date date not null default current_date,
+  due_date date not null,
+  status text not null default 'in_attesa' check (status in ('in_attesa', 'pagata', 'annullata')),
+  paid_at timestamptz,
+  payment_method text check (payment_method in ('bonifico', 'contanti', 'carta', 'assegno', 'altro')),
+  cancelled_at timestamptz,
+  cancel_reason text check (char_length(cancel_reason) <= 300),
+  created_by uuid references profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  constraint invoices_due_after_issue check (due_date >= issue_date),
+  constraint invoices_paid_has_date check (status <> 'pagata' or paid_at is not null),
+  constraint invoices_cancelled_has_date check (status <> 'annullata' or cancelled_at is not null)
+);
+-- Da un preventivo si crea UNA sola fattura (non annullata).
+create unique index if not exists idx_invoices_one_per_quote on invoices (quote_id) where quote_id is not null and status <> 'annullata';
+create index if not exists idx_invoices_status_due on invoices (status, due_date);
+
+create table if not exists invoice_items (
+  id uuid primary key default gen_random_uuid(),
+  invoice_id uuid not null references invoices (id) on delete cascade,
+  position integer not null default 0,
+  description text not null check (btrim(description) <> '' and char_length(description) <= 300),
+  quantity numeric(10, 2) not null check (quantity > 0 and quantity <= 100000),
+  unit_price numeric(12, 2) not null check (unit_price >= 0 and unit_price <= 1000000),
+  vat_rate numeric(5, 2) not null default 22 check (vat_rate >= 0 and vat_rate <= 100)
+);
+create index if not exists idx_invoice_items_invoice on invoice_items (invoice_id, position);
+
+alter table invoice_counters enable row level security;
+alter table invoices enable row level security;
+alter table invoice_items enable row level security;
+drop policy if exists "invoices_staff_select" on invoices;
+create policy "invoices_staff_select" on invoices for select to authenticated using (is_staff());
+drop policy if exists "invoice_items_staff_select" on invoice_items;
+create policy "invoice_items_staff_select" on invoice_items for select to authenticated using (is_staff());
+revoke all on invoice_counters, invoices, invoice_items from anon, authenticated;
+grant select on invoices, invoice_items to authenticated;
+
+-- Crea una fattura completa in un'unica operazione (fattura + voci + numero). p_items e' un elenco JSON di
+-- {description, quantity, unit_price, vat_rate}. Se qualcosa non va, non resta niente e il numero non si consuma.
+create or replace function create_invoice(
+  p_client_id uuid, p_title text, p_notes text, p_due_date date, p_items jsonb,
+  p_quote_id uuid default null, p_intervention_id uuid default null
+) returns invoices language plpgsql security definer set search_path = public as $$
+declare v_inv invoices; v_year integer := extract(year from current_date)::integer; v_n integer; v_due date;
+begin
+  if not is_staff() then raise exception 'Solo titolare e amministrazione possono emettere fatture'; end if;
+  if not exists (select 1 from clients where id = p_client_id) then raise exception 'Cliente non trovato'; end if;
+  if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
+    raise exception 'La fattura deve avere almeno una voce';
+  end if;
+  v_due := coalesce(p_due_date, current_date + 30);
+  if v_due < current_date then raise exception 'La scadenza non puo'' essere nel passato'; end if;
+  if p_quote_id is not null and not exists (select 1 from quotes where id = p_quote_id and status = 'accettato' and client_id = p_client_id) then
+    raise exception 'Si puo'' fatturare solo un preventivo accettato dello stesso cliente';
+  end if;
+
+  insert into invoice_counters (year, last_number) values (v_year, 1)
+    on conflict (year) do update set last_number = invoice_counters.last_number + 1
+    returning last_number into v_n;
+
+  begin
+    insert into invoices (number, client_id, quote_id, intervention_id, title, notes, due_date)
+    values ('FAT-' || v_year || '-' || lpad(v_n::text, 5, '0'), p_client_id, p_quote_id, p_intervention_id,
+            p_title, nullif(btrim(coalesce(p_notes, '')), ''), v_due)
+    returning * into v_inv;
+  exception when unique_violation then
+    raise exception 'Questo preventivo e'' gia'' stato fatturato';
+  end;
+
+  insert into invoice_items (invoice_id, position, description, quantity, unit_price, vat_rate)
+  select v_inv.id, (ord - 1)::integer, btrim(e->>'description'), (e->>'quantity')::numeric, (e->>'unit_price')::numeric,
+         coalesce((e->>'vat_rate')::numeric, 22)
+    from jsonb_array_elements(p_items) with ordinality as t(e, ord);
+  return v_inv;
+end;
+$$;
+
+-- Fattura dal preventivo accettato: stesse voci, stesso cliente.
+create or replace function create_invoice_from_quote(p_quote_id uuid, p_due_date date default null)
+returns invoices language plpgsql security definer set search_path = public as $$
+declare q quotes; v_items jsonb;
+begin
+  if not is_staff() then raise exception 'Solo titolare e amministrazione possono emettere fatture'; end if;
+  select * into q from quotes where id = p_quote_id;
+  if not found then raise exception 'Preventivo non trovato'; end if;
+  if q.status <> 'accettato' then raise exception 'Si puo'' fatturare solo un preventivo accettato'; end if;
+  select coalesce(jsonb_agg(jsonb_build_object('description', description, 'quantity', quantity, 'unit_price', unit_price, 'vat_rate', vat_rate) order by position), '[]'::jsonb)
+    into v_items from quote_items where quote_id = q.id;
+  return create_invoice(q.client_id, q.title, q.notes, p_due_date, v_items, q.id, null);
+end;
+$$;
+
+create or replace function mark_invoice_paid(p_id uuid, p_method text default null)
+returns invoices language plpgsql security definer set search_path = public as $$
+declare v_inv invoices;
+begin
+  if not is_staff() then raise exception 'Solo titolare e amministrazione possono registrare un pagamento'; end if;
+  select * into v_inv from invoices where id = p_id for update;
+  if not found then raise exception 'Fattura non trovata'; end if;
+  if v_inv.status <> 'in_attesa' then raise exception 'Questa fattura e'' gia'' %', case v_inv.status when 'pagata' then 'pagata' else 'annullata' end; end if;
+  update invoices set status = 'pagata', paid_at = now(), payment_method = nullif(p_method, '') where id = p_id returning * into v_inv;
+  return v_inv;
+end;
+$$;
+
+create or replace function cancel_invoice(p_id uuid, p_reason text default null)
+returns invoices language plpgsql security definer set search_path = public as $$
+declare v_inv invoices;
+begin
+  if not is_staff() then raise exception 'Solo titolare e amministrazione possono annullare una fattura'; end if;
+  select * into v_inv from invoices where id = p_id for update;
+  if not found then raise exception 'Fattura non trovata'; end if;
+  if v_inv.status <> 'in_attesa' then raise exception 'Si puo'' annullare solo una fattura in attesa di pagamento'; end if;
+  update invoices set status = 'annullata', cancelled_at = now(), cancel_reason = left(nullif(btrim(coalesce(p_reason, '')), ''), 300)
+   where id = p_id returning * into v_inv;
+  return v_inv;
+end;
+$$;
+
+revoke execute on function create_invoice(uuid, text, text, date, jsonb, uuid, uuid), create_invoice_from_quote(uuid, date),
+  mark_invoice_paid(uuid, text), cancel_invoice(uuid, text) from public, anon;
+grant execute on function create_invoice(uuid, text, text, date, jsonb, uuid, uuid), create_invoice_from_quote(uuid, date),
+  mark_invoice_paid(uuid, text), cancel_invoice(uuid, text) to authenticated;
+
+-- ---------------------------------------------------------
 -- 3. Sara: richieste da confermare e listino prezzi
 -- ---------------------------------------------------------
 create table if not exists sara_requests (

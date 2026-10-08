@@ -74,4 +74,32 @@ const q2 = (await as(u1, "authenticated", `insert into quotes (number, client_id
 await as(u1, "authenticated", `insert into quote_items (quote_id, description, quantity, unit_price) values ('${q2.id}', 'x', 1, 1)`);
 await as(u1, "authenticated", `delete from quotes where id='${q2.id}'`);
 t("una bozza si elimina con le sue voci", (await db.query(`select count(*)::int c from quote_items where quote_id='${q2.id}'`)).rows[0].c === 0);
+
+// ---- Fatture ----
+const clientId = quote.client_id;
+t("nessuna scrittura diretta su fatture", await fails(u1, "authenticated", `insert into invoices (number, client_id, title, due_date) values ('X', '${clientId}', 'x', current_date)`));
+t("tecnico non emette fatture", await fails(u2, "authenticated", `select create_invoice('${clientId}','x','',null,'[{"description":"a","quantity":1,"unit_price":10,"vat_rate":22}]')`));
+const inv1 = (await as(u1, "authenticated", `select * from create_invoice('${clientId}','Lavoro di prova','',null,'[{"description":"manodopera","quantity":2,"unit_price":35,"vat_rate":22},{"description":"ricambio","quantity":1,"unit_price":10.5,"vat_rate":22}]')`)).rows[0];
+t("prima fattura con numero progressivo", /^FAT-\d{4}-00001$/.test(inv1.number) && inv1.status === "in_attesa");
+t("scadenza a 30 giorni se non indicata", (await db.query(`select (due_date - issue_date) d from invoices where id='${inv1.id}'`)).rows[0].d === 30);
+t("voci salvate", (await db.query(`select count(*)::int c from invoice_items where invoice_id='${inv1.id}'`)).rows[0].c === 2);
+t("senza voci non si emette", await fails(u1, "authenticated", `select create_invoice('${clientId}','x','',null,'[]')`));
+t("voce non valida: niente fattura a meta'", await fails(u1, "authenticated", `select create_invoice('${clientId}','x','',null,'[{"description":"a","quantity":0,"unit_price":10}]')`));
+t("scadenza nel passato rifiutata", await fails(u1, "authenticated", `select create_invoice('${clientId}','x','',current_date - 1,'[{"description":"a","quantity":1,"unit_price":10}]')`));
+const inv2 = (await as(u1, "authenticated", `select * from create_invoice_from_quote('${quote.id}', null)`)).rows[0];
+t("numerazione SENZA BUCHI anche dopo errori", /-00002$/.test(inv2.number));
+t("fattura dal preventivo: stesse voci e collegamento", inv2.quote_id === quote.id && (await db.query(`select count(*)::int c from invoice_items where invoice_id='${inv2.id}'`)).rows[0].c === 2);
+t("lo stesso preventivo non si fattura due volte", await fails(u1, "authenticated", `select create_invoice_from_quote('${quote.id}', null)`));
+const q3 = (await as(u1, "authenticated", `insert into quotes (number, client_id, title) values ('', '${clientId}', 'non accettato') returning *`)).rows[0];
+t("preventivo non accettato non si fattura", await fails(u1, "authenticated", `select create_invoice_from_quote('${q3.id}', null)`));
+t("tecnico non vede le fatture", (await as(u2, "authenticated", "select * from invoices")).rows.length === 0);
+const paid = (await as(u1, "authenticated", `select * from mark_invoice_paid('${inv1.id}', 'bonifico')`)).rows[0];
+t("pagata con data e metodo", paid.status === "pagata" && paid.paid_at && paid.payment_method === "bonifico");
+t("una pagata non si annulla ne' si ripaga", (await fails(u1, "authenticated", `select cancel_invoice('${inv1.id}','x')`)) && (await fails(u1, "authenticated", `select mark_invoice_paid('${inv1.id}', null)`)));
+const canc = (await as(u1, "authenticated", `select * from cancel_invoice('${inv2.id}','errore di importo')`)).rows[0];
+t("annullata con motivo", canc.status === "annullata" && canc.cancel_reason === "errore di importo");
+const inv3 = (await as(u1, "authenticated", `select * from create_invoice_from_quote('${quote.id}', null)`)).rows[0];
+t("dopo l'annullamento il preventivo si puo' rifatturare (numero successivo)", /-00003$/.test(inv3.number));
+t("le voci di una fattura non si modificano", await fails(u1, "authenticated", `update invoice_items set unit_price = 1 where invoice_id='${inv1.id}'`));
+t("una fattura non si elimina", await fails(u1, "authenticated", `delete from invoices where id='${inv1.id}'`));
 console.log(`\n${ok} ok, ${ko} falliti`); process.exit(ko ? 1 : 0);

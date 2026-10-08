@@ -1,5 +1,5 @@
 import { friendly, supabase } from "@/lib/supabase";
-import type { Client, Intervention, InterventionStatus, Priority, Quote, QuoteStatus, SaraKind, SaraMood, SaraPrice, SaraRequest, SaraUrgency } from "@/types";
+import type { Client, Intervention, InterventionStatus, Invoice, PaymentMethod, Priority, Quote, QuoteStatus, SaraKind, SaraMood, SaraPrice, SaraRequest, SaraUrgency } from "@/types";
 
 // Letture dalle tabelle (la RLS decide cosa si vede); le scritture di Sara solo tramite le funzioni sara_*.
 
@@ -123,5 +123,40 @@ export async function setQuoteStatus(id: string, status: QuoteStatus) {
 
 export async function deleteQuote(id: string) {
   const { error } = await supabase.from("quotes").delete().eq("id", id);
+  if (error) throw friendly(error);
+}
+
+// ---- Fatture (si scrive solo con le funzioni del database: numero, voci e stato sono sempre coerenti) ----
+
+export async function fetchInvoices() {
+  const { data, error } = await supabase
+    .from("invoices")
+    .select("*, client:clients(name, phone, email, address), items:invoice_items(*)")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw friendly(error);
+  return (data as unknown as Invoice[]).map((i) => ({ ...i, items: [...(i.items ?? [])].sort((a, b) => a.position - b.position) }));
+}
+
+export async function createInvoice(input: { clientId: string; title: string; notes: string; dueDate: string; items: Array<{ description: string; quantity: number; unit_price: number; vat_rate: number }> }) {
+  const { error } = await supabase.rpc("create_invoice", {
+    p_client_id: input.clientId, p_title: input.title.trim(), p_notes: input.notes, p_due_date: input.dueDate || null, p_items: input.items,
+    p_quote_id: null, p_intervention_id: null,
+  });
+  if (error) throw friendly(error);
+}
+
+export async function createInvoiceFromQuote(quoteId: string) {
+  const { error } = await supabase.rpc("create_invoice_from_quote", { p_quote_id: quoteId, p_due_date: null });
+  if (error) throw friendly(error);
+}
+
+export async function markInvoicePaid(id: string, method: PaymentMethod) {
+  const { error } = await supabase.rpc("mark_invoice_paid", { p_id: id, p_method: method });
+  if (error) throw friendly(error);
+}
+
+export async function cancelInvoice(id: string, reason: string) {
+  const { error } = await supabase.rpc("cancel_invoice", { p_id: id, p_reason: reason });
   if (error) throw friendly(error);
 }
