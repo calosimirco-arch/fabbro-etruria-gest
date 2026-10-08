@@ -48,7 +48,7 @@ export function normalize(text: string): string {
 
 // ---------- Parola di attivazione ----------
 
-const WAKE = /\b(?:ehi|ehy|hey|ei|ciao|ok|okay)\s+sara\b[\s,.:!-]*/;
+const WAKE = /\b(?:ehi|ehy|hey|ei|ciao|ok|okay)\s+sarah?\b[\s,.:!-]*/;
 
 /** "Ehi Sara, ricordami..." -> { woke: true, rest: "ricordami..." }. Senza la parola di attivazione -> woke false. */
 export function extractWake(transcript: string): { woke: boolean; rest: string } {

@@ -22,6 +22,13 @@ e soprattutto **la risposta alle telefonate vere** (serve un numero e un provide
 Scarica `sara-gest.html` (qui nel repository), aprilo con un doppio clic in **Chrome o Edge** e, al primo avvio, incolla il *Project URL* e la chiave *anon public* del tuo progetto Supabase (Project Settings → API). I dati restano nel browser.
 Il file si rigenera con `npm run build:single` (poi copia `dist-single/index.html` in `sara-gest.html`). Limite: aperto da file, il browser chiede il permesso del microfono a ogni apertura.
 
+## «Hey Sara» sempre disponibile (cosa si può e cosa no)
+Un sito o una PWA **non può ascoltare il microfono ad app chiusa**: i browser lo vietano per la privacy. Per questo ci sono due modi, entrambi provati:
+- **Avvio con la voce dal telefono**: nella pagina Sara trovi un collegamento (`#/sara?attiva=1`) che apre Sara già in ascolto. Lo abbini a una *Routine dell'Assistente Google* («Ok Google, Sara») o a un *Comando di Siri* («Ehi Siri, Sara»): l'assistente del telefono funziona anche con l'app chiusa.
+  Se il browser non permette alla voce di parlare senza un tocco (succede quando la pagina si apre da sola), compare il pulsante «Tocca per attivare la voce di Sara».
+- **Postazione sempre attiva 24 ore**: un tablet o PC lasciato acceso con la pagina Sara aperta. Resta in ascolto di «Ehi Sara», tiene lo schermo acceso (Screen Wake Lock), si riaccende da sola dopo un'interruzione, si ricarica ogni notte alle 4:00 (mai durante una chiamata) e ricorda la scelta quando la pagina si riapre. Serve l'indirizzo online (https) con il permesso del microfono e la pagina in primo piano.
+Un vero «Hey Sara» con il telefono bloccato richiederebbe un'app Android nativa con un servizio sempre acceso e un motore di parola-chiave dedicato: non è incluso.
+
 ## Sul telefono (GitHub Pages)
 1. Su GitHub: repository → **Settings → Pages** → *Build and deployment*: **Deploy from a branch**, branch `main`, cartella **/docs** → **Save**.
 2. Dopo 1-2 minuti l'app è online su `https://<utente>.github.io/<repository>/`. Aprila dal computer e collega il progetto Supabase (una volta).

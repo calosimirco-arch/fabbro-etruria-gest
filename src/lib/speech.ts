@@ -44,10 +44,24 @@ export function pickItalianVoice(voices: readonly SpeechSynthesisVoice[]): Speec
   return italian[0] ?? null;
 }
 
-/** Fa parlare Sara. Risolve quando ha finito (o subito se la sintesi non c'e'): non lancia mai. */
-export function speak(text: string): Promise<void> {
-  if (!speechSupport.speaking() || !text.trim()) return Promise.resolve();
+export type SpeakResult = "ok" | "blocked";
+
+/**
+ * Fa parlare Sara. Risolve quando ha finito, mai dopo un tempo massimo (una sintesi che non da' mai "fine" lascerebbe
+ * Sara a ignorare il microfono per sempre), o subito se la sintesi non c'e'. "blocked" = il browser non permette la
+ * voce senza un tocco dell'utente (succede quando la pagina si apre da sola, es. da un assistente vocale). Non lancia mai.
+ */
+export function speak(text: string): Promise<SpeakResult> {
+  if (!speechSupport.speaking() || !text.trim()) return Promise.resolve("ok");
   return new Promise((resolve) => {
+    let finished = false;
+    const finish = (result: SpeakResult) => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = window.setTimeout(() => finish("ok"), Math.max(4000, text.length * 130));
     try {
       const synth = window.speechSynthesis;
       synth.cancel();
@@ -57,13 +71,18 @@ export function speak(text: string): Promise<void> {
       utterance.pitch = 1.05; // voce un po' piu' calda
       const voice = pickItalianVoice(synth.getVoices());
       if (voice) utterance.voice = voice;
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
+      utterance.onend = () => finish("ok");
+      utterance.onerror = (e) => finish((e as SpeechSynthesisErrorEvent).error === "not-allowed" ? "blocked" : "ok");
       synth.speak(utterance);
     } catch {
-      resolve();
+      finish("ok");
     }
   });
+}
+
+/** Da chiamare dentro un tocco dell'utente: sblocca la voce per il resto della sessione. */
+export function unlockVoice(): Promise<SpeakResult> {
+  return speak("Sono qui.");
 }
 
 export function stopSpeaking(): void {
@@ -86,13 +105,26 @@ export interface ListenOptions {
   /** Il microfono e' stato negato o non e' disponibile: non ha senso riprovare in silenzio. */
   onDenied?: () => void;
   onEnd?: () => void;
+  /** true quando il microfono e' acceso, false quando e' fermo (anche per i brevi riavvii automatici). */
+  onState?: (active: boolean) => void;
 }
 
-/** Ascolto del microfono. Un ascolto continuo che il browser interrompe da solo (succede dopo qualche minuto) riparte. */
+/** Pausa prima di riprendere l'ascolto: breve di norma, piu' lunga se il browser continua a interromperlo. */
+export function restartDelay(recentRestarts: number): number {
+  return recentRestarts >= 6 ? 3000 : recentRestarts >= 3 ? 1000 : 250;
+}
+
+/**
+ * Ascolto del microfono. Un ascolto continuo che il browser interrompe da solo (succede dopo qualche minuto di
+ * silenzio, o se cade la rete) riparte: e' cio' che permette a una postazione di restare in ascolto per giorni.
+ * Se le interruzioni sono troppo frequenti la pausa si allunga, cosi' non si va in un giro a vuoto.
+ */
 export function listen(options: ListenOptions): Listener | null {
   const Ctor = recognitionCtor();
   if (!Ctor) return null;
   let stopped = false;
+  let timer: number | undefined;
+  const restarts: number[] = [];
   const rec = new Ctor();
   rec.lang = "it-IT";
   rec.continuous = options.continuous;
@@ -111,30 +143,46 @@ export function listen(options: ListenOptions): Listener | null {
       options.onDenied?.();
     }
   };
-  rec.onend = () => {
-    if (options.continuous && !stopped) {
-      try {
-        rec.start();
-        return;
-      } catch {
-        // non riesce a ripartire: si chiude normalmente
-      }
+  const begin = (): boolean => {
+    try {
+      rec.start();
+      options.onState?.(true);
+      return true;
+    } catch {
+      return false;
     }
-    options.onEnd?.();
   };
-  try {
-    rec.start();
-  } catch {
-    return null;
-  }
+  rec.onend = () => {
+    options.onState?.(false);
+    if (!options.continuous || stopped) {
+      options.onEnd?.();
+      return;
+    }
+    const now = Date.now();
+    while (restarts.length && now - restarts[0] > 10_000) restarts.shift();
+    restarts.push(now);
+    const retry = () => {
+      timer = undefined;
+      if (stopped) return;
+      if (!begin()) {
+        // non riesce a ripartire adesso: riprova piu' tardi invece di arrendersi
+        restarts.push(Date.now());
+        timer = window.setTimeout(retry, restartDelay(restarts.length));
+      }
+    };
+    timer = window.setTimeout(retry, restartDelay(restarts.length));
+  };
+  if (!begin()) return null;
   return {
     stop: () => {
       stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
       try {
         rec.abort();
       } catch {
         // gia' fermo
       }
+      options.onState?.(false);
     },
   };
 }

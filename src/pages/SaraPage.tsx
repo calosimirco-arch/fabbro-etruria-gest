@@ -3,7 +3,11 @@ import { format } from "date-fns";
 import { it } from "date-fns/locale";
 import { Check, Mic, MicOff, PhoneCall, Send, Trash2, X } from "lucide-react";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from "@/components/ui";
+import { useSearchParams } from "react-router-dom";
+import { StationCard } from "@/components/StationCard";
+import { VoiceLaunch } from "@/components/VoiceLaunch";
 import { useSara } from "@/hooks/useSara";
+import { useStation } from "@/hooks/useStation";
 import {
   useConfirmSaraRequest,
   useDeleteSaraPrice,
@@ -31,7 +35,10 @@ const DRAFT_FIELDS: Array<[string, "name" | "phone" | "email" | "address" | "rea
 export default function SaraPage() {
   const { profile } = useAuth();
   const isOwner = profile?.role === "titolare";
-  const sara = useSara();
+  const [params] = useSearchParams();
+  // «?attiva=1»: la pagina si e' aperta da un assistente vocale -> Sara parte gia' in ascolto.
+  const sara = useSara({ autoArm: params.get("attiva") === "1" });
+  const station = useStation(sara);
   const { data: requests, isLoading } = useSaraRequests();
   const pending = (requests ?? []).filter((r) => r.status === "in_attesa");
   const history = (requests ?? []).filter((r) => r.status !== "in_attesa");
@@ -44,6 +51,14 @@ export default function SaraPage() {
           La tua segretaria: risponde ai clienti, raccoglie i dati e ti chiede sempre conferma prima di fare qualsiasi cosa.
         </p>
       </div>
+
+      {sara.voiceBlocked && (
+        <button className="btn w-full justify-center py-6 text-base" onClick={() => void sara.unlockVoice()}>
+          <Mic className="h-5 w-5" /> Tocca per attivare la voce di Sara
+        </button>
+      )}
+
+      <StationCard {...station} canListen={sara.canListen} armed={sara.armed} listening={sara.listening} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Conversation sara={sara} />
@@ -90,6 +105,8 @@ export default function SaraPage() {
       </section>
 
       {isOwner && <PriceList />}
+
+      <VoiceLaunch />
 
       <section>
         <h2 className="mb-2 text-sm font-semibold">Storico di Sara</h2>

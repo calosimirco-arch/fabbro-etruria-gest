@@ -21,6 +21,10 @@ describe("parola di attivazione", () => {
     expect(extractWake("Ehi Sara, ricordami domani")).toEqual({ woke: true, rest: "ricordami domani" });
     expect(extractWake("ok sara")).toEqual({ woke: true, rest: "" });
   });
+  it("capisce anche le trascrizioni «hey Sarah» e «ehi, Sara»", () => {
+    expect(extractWake("Hey Sarah nuova chiamata")).toEqual({ woke: true, rest: "nuova chiamata" });
+    expect(extractWake("Ehi, Sara!").woke).toBe(true);
+  });
   it("senza la parola non si attiva", () => {
     expect(extractWake("la sara è in ferie").woke).toBe(false);
   });

@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { useAuth } from "@/hooks/useAuth";
 import { isConfigured } from "@/lib/supabase";
@@ -14,6 +15,21 @@ import SetupPage from "@/pages/SetupPage";
 
 export default function App() {
   const { session, profile, loading } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Se il collegamento «apri Sara in ascolto» arriva prima dell'accesso, si ricorda e si apre appena si e' dentro.
+  useEffect(() => {
+    try {
+      if (!session && location.pathname === "/sara" && location.search.includes("attiva=1")) window.sessionStorage.setItem("sara-pending", "1");
+      if (session && profile && window.sessionStorage.getItem("sara-pending")) {
+        window.sessionStorage.removeItem("sara-pending");
+        navigate("/sara?attiva=1", { replace: true });
+      }
+    } catch {
+      // senza memoria della scheda il collegamento apre comunque la pagina di Sara
+    }
+  }, [session, profile, location, navigate]);
 
   if (!isConfigured) return <SetupPage />;
   if (loading) return <p className="p-6 text-sm text-steel">Caricamento...</p>;

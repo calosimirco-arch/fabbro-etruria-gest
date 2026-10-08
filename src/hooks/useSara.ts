@@ -16,7 +16,7 @@ import {
   question,
   type SaraDraft,
 } from "@/lib/sara";
-import { listen, speak, speechSupport, stopSpeaking, type Listener } from "@/lib/speech";
+import { listen, speak, speechSupport, stopSpeaking, unlockVoice as unlockBrowserVoice, type Listener } from "@/lib/speech";
 
 export interface SaraMessage {
   from: "sara" | "persona";
@@ -32,7 +32,12 @@ const NEW_CALL = /\b(nuova chiamata|c'e una chiamata|rispondi|prendi (?:la )?chi
  * scrivendo, per i browser senza riconoscimento vocale. Sara non decide nulla: registra una richiesta che il
  * Titolare deve confermare (vedi supabase/sara_assistant.sql).
  */
-export function useSara() {
+export interface SaraOptions {
+  /** Apre subito l'ascolto di «Ehi Sara» (usato quando la pagina si apre da un assistente vocale). */
+  autoArm?: boolean;
+}
+
+export function useSara({ autoArm = false }: SaraOptions = {}) {
   const register = useRegisterSaraRequest();
   const { data: prices } = useSaraPrices();
 
@@ -42,6 +47,9 @@ export function useSara() {
   const [armed, setArmedState] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [interim, setInterim] = useState("");
+  const [listening, setListening] = useState(false);
+  const [voiceBlocked, setVoiceBlocked] = useState(false);
+  const [lastHeard, setLastHeard] = useState<number | null>(null);
 
   // Gli ascoltatori vivono oltre un singolo disegno: lo stato che leggono sta in riferimenti, mai nelle chiusure.
   const draftRef = useRef(draft);
@@ -69,8 +77,10 @@ export function useSara() {
     listenerRef.current = listen({
       continuous: true,
       onInterim: (t) => { if (!speakingRef.current) setInterim(t); },
+      onState: setListening,
       onFinal: (t) => {
         setInterim("");
+        setLastHeard(Date.now());
         // Mentre Sara parla il microfono sentirebbe la sua stessa voce: si ignora tutto.
         if (!speakingRef.current) handleRef.current(t, true);
       },
@@ -82,6 +92,13 @@ export function useSara() {
       onEnd: () => { listenerRef.current = null; },
     });
   }, []);
+
+  // Per la postazione sempre attiva: se l'ascolto si e' fermato del tutto, lo riaccende (solo se deve essere acceso).
+  const ensureListening = useCallback(() => {
+    if ((armedRef.current || inCallRef.current) && !listenerRef.current) startListening();
+  }, [startListening]);
+
+  useEffect(() => { if (autoArm && speechSupport.listening()) setArmedState(true); }, [autoArm]);
 
   // Ascolto acceso quando serve (chiamata in corso o «Ehi Sara» attivo), spento altrimenti.
   useEffect(() => {
@@ -96,7 +113,7 @@ export function useSara() {
     speakingRef.current = true;
     setSpeaking(true);
     try {
-      await speak(text);
+      if ((await speak(text)) === "blocked") setVoiceBlocked(true);
     } finally {
       speakingRef.current = false;
       setSpeaking(false);
@@ -196,7 +213,17 @@ export function useSara() {
 
   useEffect(() => { handleRef.current = (t, v) => { void handle(t, v); }; }, [handle]);
 
+  // Il browser non fa parlare una pagina aperta da sola finche' non c'e' un tocco: questo lo sblocca.
+  const unlockVoice = useCallback(async () => {
+    if ((await unlockBrowserVoice()) === "ok") setVoiceBlocked(false);
+  }, []);
+
   return {
+    listening,
+    voiceBlocked,
+    unlockVoice,
+    ensureListening,
+    lastHeard,
     messages,
     draft,
     inCall,
