@@ -23,3 +23,12 @@ export interface SaraRequest {
   decided_at: string | null; reject_reason: string | null; intervention_id: string | null; created_at: string;
 }
 export interface SaraPrice { id: string; label: string; keywords: string[]; amount: number }
+
+export type QuoteStatus = "bozza" | "inviato" | "accettato" | "rifiutato";
+export interface QuoteItem { id: string; quote_id: string; position: number; description: string; quantity: number; unit_price: number; vat_rate: number }
+export interface Quote {
+  id: string; number: string; client_id: string; title: string; notes: string | null; status: QuoteStatus;
+  valid_until: string | null; created_at: string;
+  client?: Pick<Client, "name" | "phone" | "email" | "address"> | null;
+  items?: QuoteItem[];
+}

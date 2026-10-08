@@ -1,5 +1,5 @@
 import { friendly, supabase } from "@/lib/supabase";
-import type { Client, Intervention, InterventionStatus, Priority, SaraKind, SaraMood, SaraPrice, SaraRequest, SaraUrgency } from "@/types";
+import type { Client, Intervention, InterventionStatus, Priority, Quote, QuoteStatus, SaraKind, SaraMood, SaraPrice, SaraRequest, SaraUrgency } from "@/types";
 
 // Letture dalle tabelle (la RLS decide cosa si vede); le scritture di Sara solo tramite le funzioni sara_*.
 
@@ -81,5 +81,47 @@ export async function saveSaraPrice(i: { label: string; keywords: string; amount
 
 export async function deleteSaraPrice(id: string) {
   const { error } = await supabase.rpc("sara_delete_price", { p_id: id });
+  if (error) throw friendly(error);
+}
+
+// ---- Preventivi ----
+
+export async function fetchQuotes() {
+  const { data, error } = await supabase
+    .from("quotes")
+    .select("*, client:clients(name, phone, email, address), items:quote_items(*)")
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (error) throw friendly(error);
+  return (data as unknown as Quote[]).map((q) => ({ ...q, items: [...(q.items ?? [])].sort((a, b) => a.position - b.position) }));
+}
+
+export interface NewQuoteInput {
+  clientId: string; title: string; notes: string; validUntil: string;
+  items: Array<{ description: string; quantity: number; unit_price: number; vat_rate: number }>;
+}
+
+export async function createQuote(input: NewQuoteInput) {
+  const { data, error } = await supabase.from("quotes").insert({
+    number: "", client_id: input.clientId, title: input.title.trim(), notes: input.notes.trim() || null, valid_until: input.validUntil || null,
+  }).select("id").single();
+  if (error) throw friendly(error);
+  if (input.items.length > 0) {
+    const { error: itemsError } = await supabase.from("quote_items").insert(input.items.map((it, position) => ({ quote_id: data.id, position, ...it })));
+    if (itemsError) {
+      // Niente preventivo a meta': se le voci non si salvano, si toglie anche la bozza appena creata.
+      await supabase.from("quotes").delete().eq("id", data.id);
+      throw friendly(itemsError);
+    }
+  }
+}
+
+export async function setQuoteStatus(id: string, status: QuoteStatus) {
+  const { error } = await supabase.from("quotes").update({ status }).eq("id", id);
+  if (error) throw friendly(error);
+}
+
+export async function deleteQuote(id: string) {
+  const { error } = await supabase.from("quotes").delete().eq("id", id);
   if (error) throw friendly(error);
 }

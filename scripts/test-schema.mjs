@@ -51,4 +51,27 @@ t("tecnico non scrive clienti", await fails(u2, "authenticated", `insert into cl
 t("solo titolare modifica il listino", await fails(u2, "authenticated", `select sara_save_price('x','a',1,null)`));
 const price = (await as(u1, "authenticated", `select * from sara_save_price('Uscita','Caldaia, boiler',60,null)`)).rows[0];
 t("listino salvato con parole chiave", price.keywords.join() === "boiler,caldaia");
+
+// ---- Preventivi ----
+const regQ = (await as(u1, "authenticated", `select * from sara_register_request('preventivo','Giulia Neri','339 555 0123','','Via Pellicceria 4','sostituzione caldaia','normale','','sereno',null,60,'prop')`)).rows[0];
+const confQ = (await as(u1, "authenticated", `select * from sara_confirm_request('${regQ.id}')`)).rows[0];
+t("conferma di un preventivo crea cliente e bozza", confQ.quote_id && !confQ.intervention_id);
+const quote = (await db.query(`select * from quotes where id='${confQ.quote_id}'`)).rows[0];
+t("bozza con numero progressivo", quote.status === "bozza" && /^PRV-\d{4}-00001$/.test(quote.number));
+const qi = (await db.query(`select * from quote_items where quote_id='${quote.id}'`)).rows;
+t("prima voce dal listino", qi.length === 1 && Number(qi[0].unit_price) === 60);
+t("tecnico non vede i preventivi", (await as(u2, "authenticated", "select * from quotes")).rows.length === 0);
+t("tecnico non crea preventivi", await fails(u2, "authenticated", `insert into quotes (number, client_id, title) values ('', '${quote.client_id}', 'x')`));
+t("bozza modificabile", !(await fails(u1, "authenticated", `insert into quote_items (quote_id, description, quantity, unit_price) values ('${quote.id}', 'manodopera', 2, 35)`)));
+t("non si salta da bozza ad accettato", await fails(u1, "authenticated", `update quotes set status='accettato' where id='${quote.id}'`));
+await as(u1, "authenticated", `update quotes set status='inviato' where id='${quote.id}'`);
+t("inviato: voci bloccate", await fails(u1, "authenticated", `update quote_items set unit_price=1 where quote_id='${quote.id}'`));
+t("inviato: titolo bloccato", await fails(u1, "authenticated", `update quotes set title='altro' where id='${quote.id}'`));
+t("inviato: non si elimina", await fails(u1, "authenticated", `delete from quotes where id='${quote.id}'`));
+await as(u1, "authenticated", `update quotes set status='accettato' where id='${quote.id}'`);
+t("accettato e' definitivo", await fails(u1, "authenticated", `update quotes set status='rifiutato' where id='${quote.id}'`));
+const q2 = (await as(u1, "authenticated", `insert into quotes (number, client_id, title) values ('', '${quote.client_id}', 'bozza da eliminare') returning *`)).rows[0];
+await as(u1, "authenticated", `insert into quote_items (quote_id, description, quantity, unit_price) values ('${q2.id}', 'x', 1, 1)`);
+await as(u1, "authenticated", `delete from quotes where id='${q2.id}'`);
+t("una bozza si elimina con le sue voci", (await db.query(`select count(*)::int c from quote_items where quote_id='${q2.id}'`)).rows[0].c === 0);
 console.log(`\n${ok} ok, ${ko} falliti`); process.exit(ko ? 1 : 0);

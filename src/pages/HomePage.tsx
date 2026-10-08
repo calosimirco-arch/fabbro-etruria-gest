@@ -10,7 +10,7 @@ const TILES: Tile[] = [
   { label: "Sara", icon: Mic, to: "/sara", staffOnly: true },
   { label: "Interventi", icon: Wrench, to: "/interventi" },
   { label: "Clienti", icon: Users, to: "/clienti", staffOnly: true },
-  { label: "Preventivi", icon: FileText },
+  { label: "Preventivi", icon: FileText, to: "/preventivi", staffOnly: true },
   { label: "Fatture", icon: Receipt },
   { label: "Magazzino", icon: Package },
   { label: "Agenda", icon: CalendarDays },

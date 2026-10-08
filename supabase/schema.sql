@@ -109,6 +109,97 @@ revoke all on clients, interventions from anon;
 grant select, insert, update, delete on clients, interventions to authenticated;
 
 -- ---------------------------------------------------------
+-- 2b. Preventivi (bozza -> inviato -> accettato / rifiutato)
+-- ---------------------------------------------------------
+create sequence if not exists quotes_seq;
+create table if not exists quotes (
+  id uuid primary key default gen_random_uuid(),
+  number text not null unique,
+  client_id uuid not null references clients (id),
+  title text not null check (btrim(title) <> '' and char_length(title) <= 200),
+  notes text check (char_length(notes) <= 2000),
+  status text not null default 'bozza' check (status in ('bozza', 'inviato', 'accettato', 'rifiutato')),
+  valid_until date,
+  created_by uuid references profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists quote_items (
+  id uuid primary key default gen_random_uuid(),
+  quote_id uuid not null references quotes (id) on delete cascade,
+  position integer not null default 0,
+  description text not null check (btrim(description) <> '' and char_length(description) <= 300),
+  quantity numeric(10, 2) not null check (quantity > 0 and quantity <= 100000),
+  unit_price numeric(12, 2) not null check (unit_price >= 0 and unit_price <= 1000000),
+  vat_rate numeric(5, 2) not null default 22 check (vat_rate >= 0 and vat_rate <= 100)
+);
+create index if not exists idx_quote_items_quote on quote_items (quote_id, position);
+
+-- Il numero lo da' SEMPRE il database.
+create or replace function assign_quote_number() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  new.number := 'PRV-' || to_char(now(), 'YYYY') || '-' || lpad(nextval('quotes_seq')::text, 5, '0');
+  return new;
+end;
+$$;
+drop trigger if exists trg_assign_quote_number on quotes;
+create trigger trg_assign_quote_number before insert on quotes for each row execute function assign_quote_number();
+
+-- Regole del preventivo: lo stato avanza solo bozza -> inviato -> accettato/rifiutato; un preventivo inviato non si
+-- modifica nelle voci; si cancella solo una bozza. Cosi' cio' che il cliente ha ricevuto non cambia di nascosto.
+create or replace function guard_quote_update() returns trigger language plpgsql set search_path = public as $$
+begin
+  if new.client_id is distinct from old.client_id or new.number is distinct from old.number then
+    raise exception 'Cliente e numero di un preventivo non si cambiano';
+  end if;
+  if new.status is distinct from old.status then
+    if not ((old.status = 'bozza' and new.status = 'inviato')
+         or (old.status = 'inviato' and new.status in ('accettato', 'rifiutato'))) then
+      raise exception 'Il preventivo non puo'' passare da % a %', old.status, new.status;
+    end if;
+  elsif old.status <> 'bozza' and (new.title is distinct from old.title or new.notes is distinct from old.notes
+        or new.valid_until is distinct from old.valid_until) then
+    raise exception 'Un preventivo gia'' inviato non si modifica';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_guard_quote_update on quotes;
+create trigger trg_guard_quote_update before update on quotes for each row execute function guard_quote_update();
+
+create or replace function guard_quote_delete() returns trigger language plpgsql set search_path = public as $$
+begin
+  if old.status <> 'bozza' then raise exception 'Si puo'' eliminare solo un preventivo in bozza'; end if;
+  return old;
+end;
+$$;
+drop trigger if exists trg_guard_quote_delete on quotes;
+create trigger trg_guard_quote_delete before delete on quotes for each row execute function guard_quote_delete();
+
+create or replace function guard_quote_items() returns trigger language plpgsql set search_path = public as $$
+declare v_status text;
+begin
+  select status into v_status from quotes where id = coalesce(new.quote_id, old.quote_id);
+  -- Preventivo non trovato = si sta cancellando il preventivo intero (a cascata): consentito.
+  if v_status is not null and v_status <> 'bozza' then
+    raise exception 'Le voci di un preventivo gia'' inviato non si modificano';
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+drop trigger if exists trg_guard_quote_items on quote_items;
+create trigger trg_guard_quote_items before insert or update or delete on quote_items for each row execute function guard_quote_items();
+
+alter table quotes enable row level security;
+alter table quote_items enable row level security;
+drop policy if exists "quotes_staff_all" on quotes;
+create policy "quotes_staff_all" on quotes for all to authenticated using (is_staff()) with check (is_staff());
+drop policy if exists "quote_items_staff_all" on quote_items;
+create policy "quote_items_staff_all" on quote_items for all to authenticated using (is_staff()) with check (is_staff());
+revoke all on quotes, quote_items from anon;
+grant select, insert, update, delete on quotes, quote_items to authenticated;
+
+-- ---------------------------------------------------------
 -- 3. Sara: richieste da confermare e listino prezzi
 -- ---------------------------------------------------------
 create table if not exists sara_requests (
@@ -129,6 +220,7 @@ create table if not exists sara_requests (
   reject_reason text,
   client_id uuid references clients (id) on delete set null,
   intervention_id uuid references interventions (id) on delete set null,
+  quote_id uuid references quotes (id) on delete set null,
   created_by uuid references profiles (id) on delete set null default auth.uid(),
   created_at timestamptz not null default now(),
   constraint sara_requests_text_length check (
@@ -137,6 +229,7 @@ create table if not exists sara_requests (
     and coalesce(char_length(reason), 0) <= 1000 and coalesce(char_length(notes), 0) <= 1000
     and coalesce(char_length(proposal), 0) <= 2000 and coalesce(char_length(reject_reason), 0) <= 300)
 );
+alter table sara_requests add column if not exists quote_id uuid references quotes (id) on delete set null;
 create index if not exists idx_sara_requests_status on sara_requests (status, created_at desc);
 
 create table if not exists sara_prices (
@@ -196,14 +289,14 @@ $$;
 -- Conferma del titolare: intervento/urgenza/appuntamento creano il cliente (se nuovo) e l'intervento.
 create or replace function sara_confirm_request(p_id uuid)
 returns sara_requests language plpgsql security definer set search_path = public as $$
-declare v_row sara_requests; v_client uuid; v_int uuid; v_digits text;
+declare v_row sara_requests; v_client uuid; v_int uuid; v_quote uuid; v_digits text;
 begin
   if not is_staff() then raise exception 'Solo titolare e amministrazione possono confermare'; end if;
   select * into v_row from sara_requests where id = p_id for update;
   if not found then raise exception 'Richiesta non trovata'; end if;
   if v_row.status <> 'in_attesa' then raise exception 'Questa richiesta e'' gia'' stata decisa'; end if;
 
-  if v_row.kind in ('intervento', 'urgenza', 'appuntamento') then
+  if v_row.kind in ('intervento', 'urgenza', 'appuntamento', 'preventivo') then
     v_digits := regexp_replace(coalesce(v_row.client_phone, ''), '[^0-9]', '', 'g');
     -- Cliente abituale: stesso telefono (solo cifre) o stessa email.
     select c.id into v_client from clients c
@@ -216,18 +309,30 @@ begin
       returning id into v_client;
     end if;
 
-    insert into interventions (client_id, title, description, priority, address, scheduled_at, number)
-    values (v_client, left('Richiesta telefonica: ' || v_row.reason, 200),
-      concat_ws(E'\n', v_row.reason, case when v_row.notes is not null then 'Note: ' || v_row.notes end,
-                'Raccolta da Sara. Tono del cliente: ' || v_row.mood || '.'),
-      case when v_row.kind = 'urgenza' or v_row.urgency = 'urgente' then 'critica'
-           when v_row.urgency = 'alta' then 'alta' else 'media' end,
-      v_row.client_address, case when v_row.kind = 'appuntamento' then v_row.scheduled_at end, '')
-    returning id into v_int;
+    if v_row.kind = 'preventivo' then
+      -- Una BOZZA: il titolare la completa e la invia lui. Se Sara ha un prezzo di listino, e' la prima voce.
+      insert into quotes (number, client_id, title, notes)
+      values ('', v_client, left(v_row.reason, 200),
+              concat_ws(E'\n', case when v_row.notes is not null then 'Note: ' || v_row.notes end, 'Richiesta raccolta da Sara.'))
+      returning id into v_quote;
+      if v_row.price_hint is not null then
+        insert into quote_items (quote_id, position, description, quantity, unit_price)
+        values (v_quote, 0, left(v_row.reason, 300), 1, v_row.price_hint);
+      end if;
+    else
+      insert into interventions (client_id, title, description, priority, address, scheduled_at, number)
+      values (v_client, left('Richiesta telefonica: ' || v_row.reason, 200),
+        concat_ws(E'\n', v_row.reason, case when v_row.notes is not null then 'Note: ' || v_row.notes end,
+                  'Raccolta da Sara. Tono del cliente: ' || v_row.mood || '.'),
+        case when v_row.kind = 'urgenza' or v_row.urgency = 'urgente' then 'critica'
+             when v_row.urgency = 'alta' then 'alta' else 'media' end,
+        v_row.client_address, case when v_row.kind = 'appuntamento' then v_row.scheduled_at end, '')
+      returning id into v_int;
+    end if;
   end if;
 
   update sara_requests set status = 'confermata', decided_by = auth.uid(), decided_at = now(),
-         client_id = v_client, intervention_id = v_int
+         client_id = v_client, intervention_id = v_int, quote_id = v_quote
    where id = p_id returning * into v_row;
   return v_row;
 end;

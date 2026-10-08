@@ -200,6 +200,7 @@ function PendingCard({ request }: { request: SaraRequest }) {
   const reject = useRejectSaraRequest();
   const busy = confirm.isPending || reject.isPending;
   const createsTicket = ["intervento", "urgenza", "appuntamento"].includes(request.kind);
+  const createsQuote = request.kind === "preventivo";
 
   return (
     <Card className={clsx(request.urgency === "urgente" && "border-destructive")}>
@@ -219,6 +220,7 @@ function PendingCard({ request }: { request: SaraRequest }) {
         <p className="border-l-2 border-primary bg-muted/40 p-2 text-xs">
           <span className="font-medium">Proposta di Sara:</span> {request.proposal}
           {createsTicket ? " Se confermi, creo il cliente (se è nuovo) e il lavoro negli interventi." : ""}
+          {createsQuote ? " Se confermi, creo il cliente (se è nuovo) e una bozza di preventivo da completare." : ""}
         </p>
         <div className="grid grid-cols-2 gap-2 pt-1">
           <Button disabled={busy} onClick={() => confirm.mutate(request.id)}>

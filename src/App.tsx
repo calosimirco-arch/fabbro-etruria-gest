@@ -6,6 +6,7 @@ import ClientsPage from "@/pages/ClientsPage";
 import HomePage from "@/pages/HomePage";
 import InterventionsPage from "@/pages/InterventionsPage";
 import LoginPage from "@/pages/LoginPage";
+import QuotesPage from "@/pages/QuotesPage";
 import SaraPage from "@/pages/SaraPage";
 import SetupPage from "@/pages/SetupPage";
 
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="/interventi" element={<InterventionsPage />} />
         {staff && <Route path="/clienti" element={<ClientsPage />} />}
         {staff && <Route path="/sara" element={<SaraPage />} />}
+        {staff && <Route path="/preventivi" element={<QuotesPage />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

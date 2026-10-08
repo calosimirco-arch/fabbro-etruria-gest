@@ -13,6 +13,7 @@ export function Layout() {
     { to: "/", label: "Home", end: true, show: true },
     { to: "/sara", label: "Sara", show: staff },
     { to: "/interventi", label: "Interventi", show: true },
+    { to: "/preventivi", label: "Preventivi", show: staff },
     { to: "/clienti", label: "Clienti", show: staff },
   ].filter((l) => l.show);
 

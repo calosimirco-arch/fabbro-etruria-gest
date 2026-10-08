@@ -42,7 +42,13 @@ export const useSetInterventionStatus = () =>
   useInvalidatingMutation((v: { id: string; status: Parameters<typeof api.setInterventionStatus>[1] }) => api.setInterventionStatus(v.id, v.status), [["interventions"]]);
 export const useRegisterSaraRequest = () => useInvalidatingMutation(api.registerSaraRequest, [["sara-requests"]]);
 export const useConfirmSaraRequest = () =>
-  useInvalidatingMutation(api.confirmSaraRequest, [["sara-requests"], ["interventions"], ["clients"]], "Confermato");
+  useInvalidatingMutation(api.confirmSaraRequest, [["sara-requests"], ["interventions"], ["clients"], ["quotes"]], "Confermato");
 export const useRejectSaraRequest = () => useInvalidatingMutation(api.rejectSaraRequest, [["sara-requests"]], "Richiesta rifiutata");
 export const useSaveSaraPrice = () => useInvalidatingMutation(api.saveSaraPrice, [["sara-prices"]]);
 export const useDeleteSaraPrice = () => useInvalidatingMutation(api.deleteSaraPrice, [["sara-prices"]]);
+
+export const useQuotes = () => useQuery({ queryKey: ["quotes"], queryFn: api.fetchQuotes });
+export const useCreateQuote = () => useInvalidatingMutation(api.createQuote, [["quotes"]], "Preventivo creato");
+export const useSetQuoteStatus = () =>
+  useInvalidatingMutation((v: { id: string; status: Parameters<typeof api.setQuoteStatus>[1] }) => api.setQuoteStatus(v.id, v.status), [["quotes"]]);
+export const useDeleteQuote = () => useInvalidatingMutation(api.deleteQuote, [["quotes"]], "Bozza eliminata");

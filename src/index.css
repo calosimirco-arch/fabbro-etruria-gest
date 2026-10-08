@@ -12,3 +12,11 @@ body { @apply bg-steel-soft font-sans text-slate-900 antialiased; }
   .field { @apply h-10 w-full border border-steel-line bg-white px-3 text-sm outline-none focus:border-brand; }
   .tag { @apply inline-flex items-center border border-steel-line bg-steel-soft px-2 py-0.5 text-xs font-medium text-steel; }
 }
+
+/* Stampa del preventivo: si vede solo il foglio, senza menu e pulsanti. */
+@media print {
+  .no-print, header, [data-sonner-toaster] { display: none !important; }
+  body { background: #fff; }
+  #print-area { display: block !important; padding: 0; }
+  main { max-width: none !important; padding: 0 !important; }
+}
