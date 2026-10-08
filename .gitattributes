@@ -1,0 +1,4 @@
+# Il linguaggio del progetto e' TypeScript: i file generati non devono contare nelle statistiche di GitHub.
+# (sara-gest.html e' il file unico costruito da "npm run build:single": non si modifica a mano.)
+sara-gest.html linguist-generated=true
+package-lock.json linguist-generated=true
