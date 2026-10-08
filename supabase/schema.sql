@@ -346,6 +346,117 @@ grant execute on function create_invoice(uuid, text, text, date, jsonb, uuid, uu
   mark_invoice_paid(uuid, text), cancel_invoice(uuid, text) to authenticated;
 
 -- ---------------------------------------------------------
+-- 2d. Magazzino: materiali, magazzini multipli, movimenti (carico / scarico / rettifica / trasferimento)
+-- ---------------------------------------------------------
+-- La giacenza NON e' un numero scritto a mano: e' la somma dei movimenti (registro che non si modifica e non si
+-- cancella). I movimenti si fanno solo con stock_move / stock_transfer, che impediscono giacenze negative e
+-- serializzano i movimenti dello stesso materiale (due scarichi insieme non possono superare la scorta).
+create table if not exists warehouses (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (btrim(name) <> '' and char_length(name) <= 80),
+  created_at timestamptz not null default now()
+);
+create unique index if not exists idx_warehouses_name on warehouses (lower(name));
+insert into warehouses (name) select 'Magazzino principale' where not exists (select 1 from warehouses);
+
+create table if not exists materials (
+  id uuid primary key default gen_random_uuid(),
+  code text not null check (btrim(code) <> '' and char_length(code) <= 40),
+  name text not null check (btrim(name) <> '' and char_length(name) <= 150),
+  unit text not null default 'pz' check (btrim(unit) <> '' and char_length(unit) <= 10),
+  price numeric(12, 2) not null default 0 check (price >= 0 and price <= 1000000),
+  min_stock numeric(12, 2) not null default 0 check (min_stock >= 0 and min_stock <= 1000000),
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists idx_materials_code on materials (lower(code));
+
+create table if not exists stock_movements (
+  id uuid primary key default gen_random_uuid(),
+  material_id uuid not null references materials (id),
+  warehouse_id uuid not null references warehouses (id),
+  kind text not null check (kind in ('carico', 'scarico', 'rettifica')),
+  delta numeric(12, 2) not null check (delta <> 0),
+  note text check (char_length(note) <= 300),
+  intervention_id uuid references interventions (id) on delete set null,
+  transfer_id uuid,
+  created_by uuid references profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  constraint stock_movements_sign check ((kind = 'carico' and delta > 0) or (kind = 'scarico' and delta < 0) or kind = 'rettifica')
+);
+create index if not exists idx_stock_movements_material on stock_movements (material_id, created_at desc);
+create index if not exists idx_stock_movements_warehouse on stock_movements (warehouse_id);
+
+create or replace view stock_levels with (security_invoker = true) as
+  select material_id, warehouse_id, sum(delta)::numeric(12, 2) as quantity
+    from stock_movements group by material_id, warehouse_id;
+
+alter table warehouses enable row level security;
+alter table materials enable row level security;
+alter table stock_movements enable row level security;
+drop policy if exists "warehouses_staff_all" on warehouses;
+create policy "warehouses_staff_all" on warehouses for all to authenticated using (is_staff()) with check (is_staff());
+drop policy if exists "materials_staff_all" on materials;
+create policy "materials_staff_all" on materials for all to authenticated using (is_staff()) with check (is_staff());
+drop policy if exists "stock_movements_staff_select" on stock_movements;
+create policy "stock_movements_staff_select" on stock_movements for select to authenticated using (is_staff());
+revoke all on warehouses, materials, stock_movements, stock_levels from anon;
+revoke all on stock_movements, stock_levels from authenticated;
+grant select on stock_movements, stock_levels to authenticated;
+grant select, insert, update on warehouses, materials to authenticated;
+
+create or replace function stock_move(
+  p_material uuid, p_warehouse uuid, p_kind text, p_quantity numeric, p_note text default null, p_intervention uuid default null
+) returns stock_movements language plpgsql security definer set search_path = public as $$
+declare v_mat materials; v_delta numeric; v_bal numeric; v_row stock_movements;
+begin
+  if not is_staff() then raise exception 'Solo titolare e amministrazione gestiscono il magazzino'; end if;
+  if p_kind not in ('carico', 'scarico', 'rettifica') then raise exception 'Tipo di movimento non valido'; end if;
+  if p_quantity is null or p_quantity = 0 then raise exception 'La quantita'' non puo'' essere zero'; end if;
+  if p_kind <> 'rettifica' and p_quantity < 0 then raise exception 'Per carico e scarico la quantita'' e'' sempre positiva'; end if;
+  -- Blocca il materiale: due movimenti insieme sullo stesso materiale si mettono in fila.
+  select * into v_mat from materials where id = p_material for update;
+  if not found then raise exception 'Materiale non trovato'; end if;
+  if not v_mat.active then raise exception 'Il materiale e'' archiviato'; end if;
+  if not exists (select 1 from warehouses where id = p_warehouse) then raise exception 'Magazzino non trovato'; end if;
+  if p_intervention is not null and not exists (select 1 from interventions where id = p_intervention) then raise exception 'Intervento non trovato'; end if;
+  v_delta := case p_kind when 'scarico' then -p_quantity else p_quantity end;
+  select coalesce(sum(delta), 0) into v_bal from stock_movements where material_id = p_material and warehouse_id = p_warehouse;
+  if v_bal + v_delta < 0 then raise exception 'Giacenza insufficiente: disponibili % %', v_bal, v_mat.unit; end if;
+  insert into stock_movements (material_id, warehouse_id, kind, delta, note, intervention_id)
+  values (p_material, p_warehouse, p_kind, v_delta, nullif(btrim(coalesce(p_note, '')), ''), p_intervention)
+  returning * into v_row;
+  return v_row;
+end;
+$$;
+
+-- Trasferimento tra due magazzini: scarico + carico nella stessa operazione (o tutti e due o nessuno).
+create or replace function stock_transfer(p_material uuid, p_from uuid, p_to uuid, p_quantity numeric, p_note text default null)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_mat materials; v_bal numeric; v_id uuid := gen_random_uuid(); v_from text; v_to text;
+begin
+  if not is_staff() then raise exception 'Solo titolare e amministrazione gestiscono il magazzino'; end if;
+  if p_quantity is null or p_quantity <= 0 then raise exception 'La quantita'' da trasferire deve essere maggiore di zero'; end if;
+  if p_from = p_to then raise exception 'Scegli due magazzini diversi'; end if;
+  select * into v_mat from materials where id = p_material for update;
+  if not found then raise exception 'Materiale non trovato'; end if;
+  if not v_mat.active then raise exception 'Il materiale e'' archiviato'; end if;
+  select name into v_from from warehouses where id = p_from;
+  select name into v_to from warehouses where id = p_to;
+  if v_from is null or v_to is null then raise exception 'Magazzino non trovato'; end if;
+  select coalesce(sum(delta), 0) into v_bal from stock_movements where material_id = p_material and warehouse_id = p_from;
+  if v_bal < p_quantity then raise exception 'Giacenza insufficiente: disponibili % %', v_bal, v_mat.unit; end if;
+  insert into stock_movements (material_id, warehouse_id, kind, delta, note, transfer_id)
+  values (p_material, p_from, 'scarico', -p_quantity, concat_ws(' - ', 'Trasferimento a ' || v_to, nullif(btrim(coalesce(p_note, '')), '')), v_id),
+         (p_material, p_to, 'carico', p_quantity, concat_ws(' - ', 'Trasferimento da ' || v_from, nullif(btrim(coalesce(p_note, '')), '')), v_id);
+  return v_id;
+end;
+$$;
+
+revoke execute on function stock_move(uuid, uuid, text, numeric, text, uuid), stock_transfer(uuid, uuid, uuid, numeric, text) from public, anon;
+grant execute on function stock_move(uuid, uuid, text, numeric, text, uuid), stock_transfer(uuid, uuid, uuid, numeric, text) to authenticated;
+
+-- ---------------------------------------------------------
 -- 3. Sara: richieste da confermare e listino prezzi
 -- ---------------------------------------------------------
 create table if not exists sara_requests (

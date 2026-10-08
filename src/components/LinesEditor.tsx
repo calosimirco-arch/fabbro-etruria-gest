@@ -1,5 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import { formatCents, lineNet, parseDecimal, quoteTotals, type Totals } from "@/lib/quotes";
+import type { Material } from "@/types";
 
 // Voci di un preventivo o di una fattura: stesse regole, un solo componente.
 export interface FormLine { description: string; quantity: string; price: string; vat: string }
@@ -18,7 +19,7 @@ export function parseLines(lines: readonly FormLine[]): { items: ParsedItem[]; e
   return { items: filled, error, totals: quoteTotals(filled.filter(valid)) };
 }
 
-export function LinesEditor({ lines, setLines, totals }: { lines: FormLine[]; setLines: (l: FormLine[]) => void; totals: Totals }) {
+export function LinesEditor({ lines, setLines, totals, materials }: { lines: FormLine[]; setLines: (l: FormLine[]) => void; totals: Totals; materials?: Material[] }) {
   const setLine = (i: number, patch: Partial<FormLine>) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
   return (
     <div className="space-y-2">
@@ -37,7 +38,21 @@ export function LinesEditor({ lines, setLines, totals }: { lines: FormLine[]; se
           </div>
         );
       })}
-      <button type="button" className="btn btn-outline h-8" onClick={() => setLines([...lines, emptyLine()])}><Plus className="h-4 w-4" />Aggiungi voce</button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className="btn btn-outline h-8" onClick={() => setLines([...lines, emptyLine()])}><Plus className="h-4 w-4" />Aggiungi voce</button>
+        {materials && materials.length > 0 && (
+          <select className="field h-8 w-auto py-0" aria-label="Aggiungi dal magazzino" value="" onChange={(e) => {
+            const m = materials.find((x) => x.id === e.target.value);
+            if (!m) return;
+            const line: FormLine = { description: `${m.code} — ${m.name}`, quantity: "1", price: String(m.price).replace(".", ","), vat: "22" };
+            const onlyEmpty = lines.length === 1 && !lines[0].description.trim() && !lines[0].price.trim();
+            setLines(onlyEmpty ? [line] : [...lines, line]);
+          }}>
+            <option value="">Aggiungi dal magazzino…</option>
+            {materials.filter((m) => m.active).map((m) => <option key={m.id} value={m.id}>{m.code} · {m.name} ({String(m.price).replace(".", ",")} €)</option>)}
+          </select>
+        )}
+      </div>
       <p className="text-sm"><span className="text-steel">Imponibile {formatCents(totals.net)} · IVA {formatCents(totals.vat)} · </span><b>Totale {formatCents(totals.gross)}</b></p>
     </div>
   );

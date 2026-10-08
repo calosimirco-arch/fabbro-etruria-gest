@@ -43,3 +43,15 @@ export interface Invoice {
   client?: Pick<Client, "name" | "phone" | "email" | "address"> | null;
   items?: InvoiceItem[];
 }
+
+export interface Warehouse { id: string; name: string }
+export interface Material { id: string; code: string; name: string; unit: string; price: number; min_stock: number; active: boolean }
+export interface StockLevel { material_id: string; warehouse_id: string; quantity: number }
+export type MovementKind = "carico" | "scarico" | "rettifica";
+export interface StockMovement {
+  id: string; material_id: string; warehouse_id: string; kind: MovementKind; delta: number; note: string | null;
+  intervention_id: string | null; transfer_id: string | null; created_at: string;
+  material?: Pick<Material, "code" | "name" | "unit"> | null;
+  warehouse?: Pick<Warehouse, "name"> | null;
+  intervention?: { number: string } | null;
+}

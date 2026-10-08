@@ -5,7 +5,7 @@ import { FileText, Plus, Printer, Trash2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { DocumentSheet } from "@/components/DocumentSheet";
 import { LinesEditor, emptyLine, parseLines, type FormLine } from "@/components/LinesEditor";
-import { useClients, useCreateInvoiceFromQuote, useCreateQuote, useDeleteQuote, useQuotes, useSetQuoteStatus } from "@/hooks/useData";
+import { useClients, useCreateInvoiceFromQuote, useMaterials, useCreateQuote, useDeleteQuote, useQuotes, useSetQuoteStatus } from "@/hooks/useData";
 import { NEXT_STATUSES, STATUS_LABELS, formatCents, lineNet, quoteTotals } from "@/lib/quotes";
 import type { Quote, QuoteStatus } from "@/types";
 
@@ -21,6 +21,7 @@ export default function QuotesPage() {
   const navigate = useNavigate();
   const { data: quotes, isLoading } = useQuotes();
   const { data: clients } = useClients();
+  const { data: materials } = useMaterials();
   const create = useCreateQuote();
   const setStatus = useSetQuoteStatus();
   const remove = useDeleteQuote();
@@ -69,7 +70,7 @@ export default function QuotesPage() {
               <input className="field" placeholder="Oggetto (es. Sostituzione caldaia)" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
               <input className="field" type="date" title="Valido fino al" value={form.validUntil} onChange={(e) => setForm({ ...form, validUntil: e.target.value })} />
             </div>
-            <LinesEditor lines={lines} setLines={setLines} totals={parsed.totals} />
+            <LinesEditor lines={lines} setLines={setLines} totals={parsed.totals} materials={materials} />
             <textarea className="field h-20 py-2" placeholder="Note per il cliente (facoltative)" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             <div className="flex justify-end"><button className="btn" disabled={create.isPending}>Salva come bozza</button></div>
             {error && <p className="border border-red-300 bg-red-50 p-2 text-sm text-red-700">{error}</p>}

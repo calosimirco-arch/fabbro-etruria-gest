@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { isConfigured } from "@/lib/supabase";
 import ClientsPage from "@/pages/ClientsPage";
 import HomePage from "@/pages/HomePage";
+import InventoryPage from "@/pages/InventoryPage";
 import InvoicesPage from "@/pages/InvoicesPage";
 import InterventionsPage from "@/pages/InterventionsPage";
 import LoginPage from "@/pages/LoginPage";
@@ -31,6 +32,7 @@ export default function App() {
         {staff && <Route path="/sara" element={<SaraPage />} />}
         {staff && <Route path="/preventivi" element={<QuotesPage />} />}
         {staff && <Route path="/fatture" element={<InvoicesPage />} />}
+        {staff && <Route path="/magazzino" element={<InventoryPage />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -1,5 +1,5 @@
 import { friendly, supabase } from "@/lib/supabase";
-import type { Client, Intervention, InterventionStatus, Invoice, PaymentMethod, Priority, Quote, QuoteStatus, SaraKind, SaraMood, SaraPrice, SaraRequest, SaraUrgency } from "@/types";
+import type { Client, Intervention, InterventionStatus, Invoice, Material, MovementKind, PaymentMethod, Priority, Quote, QuoteStatus, SaraKind, SaraMood, SaraPrice, SaraRequest, SaraUrgency, StockLevel, StockMovement, Warehouse } from "@/types";
 
 // Letture dalle tabelle (la RLS decide cosa si vede); le scritture di Sara solo tramite le funzioni sara_*.
 
@@ -158,5 +158,51 @@ export async function markInvoicePaid(id: string, method: PaymentMethod) {
 
 export async function cancelInvoice(id: string, reason: string) {
   const { error } = await supabase.rpc("cancel_invoice", { p_id: id, p_reason: reason });
+  if (error) throw friendly(error);
+}
+
+// ---- Magazzino (i movimenti si scrivono solo con le funzioni del database: niente giacenze negative) ----
+
+export async function fetchWarehouses() {
+  const { data, error } = await supabase.from("warehouses").select("*").order("created_at");
+  if (error) throw friendly(error);
+  return data as Warehouse[];
+}
+export async function fetchMaterials() {
+  const { data, error } = await supabase.from("materials").select("*").order("name").limit(2000);
+  if (error) throw friendly(error);
+  return (data as Material[]).map((m) => ({ ...m, price: Number(m.price), min_stock: Number(m.min_stock) }));
+}
+export async function fetchStockLevels() {
+  const { data, error } = await supabase.from("stock_levels").select("*").limit(10000);
+  if (error) throw friendly(error);
+  return (data as StockLevel[]).map((l) => ({ ...l, quantity: Number(l.quantity) }));
+}
+export async function fetchMovements() {
+  const { data, error } = await supabase
+    .from("stock_movements")
+    .select("*, material:materials(code, name, unit), warehouse:warehouses(name), intervention:interventions(number)")
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (error) throw friendly(error);
+  return (data as unknown as StockMovement[]).map((m) => ({ ...m, delta: Number(m.delta) }));
+}
+export async function createWarehouse(name: string) {
+  const { error } = await supabase.from("warehouses").insert({ name: name.trim() });
+  if (error) throw friendly(error.message.includes("idx_warehouses_name") ? { message: "Esiste già un magazzino con questo nome" } : error);
+}
+export async function saveMaterial(input: { id?: string; code: string; name: string; unit: string; price: number; minStock: number; active?: boolean }) {
+  const row = { code: input.code.trim(), name: input.name.trim(), unit: input.unit.trim() || "pz", price: input.price, min_stock: input.minStock, ...(input.active === undefined ? {} : { active: input.active }) };
+  const { error } = input.id ? await supabase.from("materials").update(row).eq("id", input.id) : await supabase.from("materials").insert(row);
+  if (error) throw friendly(error.message.includes("idx_materials_code") ? { message: "Esiste già un materiale con questo codice" } : error);
+}
+export async function stockMove(input: { materialId: string; warehouseId: string; kind: MovementKind; quantity: number; note: string; interventionId?: string | null }) {
+  const { error } = await supabase.rpc("stock_move", {
+    p_material: input.materialId, p_warehouse: input.warehouseId, p_kind: input.kind, p_quantity: input.quantity, p_note: input.note, p_intervention: input.interventionId || null,
+  });
+  if (error) throw friendly(error);
+}
+export async function stockTransfer(input: { materialId: string; fromId: string; toId: string; quantity: number; note: string }) {
+  const { error } = await supabase.rpc("stock_transfer", { p_material: input.materialId, p_from: input.fromId, p_to: input.toId, p_quantity: input.quantity, p_note: input.note });
   if (error) throw friendly(error);
 }

@@ -102,4 +102,36 @@ const inv3 = (await as(u1, "authenticated", `select * from create_invoice_from_q
 t("dopo l'annullamento il preventivo si puo' rifatturare (numero successivo)", /-00003$/.test(inv3.number));
 t("le voci di una fattura non si modificano", await fails(u1, "authenticated", `update invoice_items set unit_price = 1 where invoice_id='${inv1.id}'`));
 t("una fattura non si elimina", await fails(u1, "authenticated", `delete from invoices where id='${inv1.id}'`));
+
+// ---- Magazzino ----
+const wh1 = (await db.query("select id from warehouses order by created_at limit 1")).rows[0].id;
+t("esiste il magazzino principale", !!wh1);
+const wh2 = (await as(u1, "authenticated", `insert into warehouses (name) values ('Furgone 1') returning id`)).rows[0].id;
+t("nome magazzino unico (senza maiuscole)", await fails(u1, "authenticated", `insert into warehouses (name) values ('FURGONE 1')`));
+t("tecnico non crea materiali", await fails(u2, "authenticated", `insert into materials (code, name) values ('X', 'x')`));
+const mat = (await as(u1, "authenticated", `insert into materials (code, name, unit, price, min_stock) values ('RUB-01', 'Rubinetto cucina', 'pz', 25, 5) returning *`)).rows[0];
+t("codice materiale unico (senza maiuscole)", await fails(u1, "authenticated", `insert into materials (code, name) values ('rub-01', 'altro')`));
+t("nessuna scrittura diretta sui movimenti", await fails(u1, "authenticated", `insert into stock_movements (material_id, warehouse_id, kind, delta) values ('${mat.id}','${wh1}','carico',5)`));
+t("tecnico non muove il magazzino", await fails(u2, "authenticated", `select stock_move('${mat.id}','${wh1}','carico',5,null,null)`));
+await as(u1, "authenticated", `select stock_move('${mat.id}','${wh1}','carico',10,'acquisto',null)`);
+const lvl = async (w) => Number((await db.query(`select coalesce(sum(quantity),0) q from stock_levels where material_id='${mat.id}' and warehouse_id='${w}'`)).rows[0].q);
+t("giacenza = somma dei movimenti", (await lvl(wh1)) === 10);
+t("quantita' zero o negativa rifiutata", (await fails(u1, "authenticated", `select stock_move('${mat.id}','${wh1}','carico',0,null,null)`)) && (await fails(u1, "authenticated", `select stock_move('${mat.id}','${wh1}','scarico',-3,null,null)`)));
+t("scarico oltre la giacenza rifiutato", await fails(u1, "authenticated", `select stock_move('${mat.id}','${wh1}','scarico',11,null,null)`));
+const intId = (await db.query("select id from interventions limit 1")).rows[0].id;
+await as(u1, "authenticated", `select stock_move('${mat.id}','${wh1}','scarico',4,'usato sul lavoro','${intId}')`);
+t("scarico collegato all'intervento", (await lvl(wh1)) === 6 && (await db.query(`select count(*)::int c from stock_movements where intervention_id='${intId}'`)).rows[0].c === 1);
+t("intervento inesistente rifiutato", await fails(u1, "authenticated", `select stock_move('${mat.id}','${wh1}','scarico',1,null,'00000000-0000-0000-0000-000000000000')`));
+await as(u1, "authenticated", `select stock_move('${mat.id}','${wh1}','rettifica',-2,'inventario: mancano 2',null)`);
+t("rettifica negativa", (await lvl(wh1)) === 4);
+t("rettifica che porta sotto zero rifiutata", await fails(u1, "authenticated", `select stock_move('${mat.id}','${wh1}','rettifica',-5,null,null)`));
+await as(u1, "authenticated", `select stock_transfer('${mat.id}','${wh1}','${wh2}',3,'sul furgone')`);
+t("trasferimento: scarico + carico", (await lvl(wh1)) === 1 && (await lvl(wh2)) === 3);
+t("trasferimento oltre la giacenza rifiutato e senza effetti", (await fails(u1, "authenticated", `select stock_transfer('${mat.id}','${wh1}','${wh2}',2,null)`)) && (await lvl(wh1)) === 1 && (await lvl(wh2)) === 3);
+t("trasferimento sullo stesso magazzino rifiutato", await fails(u1, "authenticated", `select stock_transfer('${mat.id}','${wh1}','${wh1}',1,null)`));
+t("i movimenti non si modificano ne' si cancellano", (await fails(u1, "authenticated", `update stock_movements set delta = 99`)) && (await fails(u1, "authenticated", `delete from stock_movements`)));
+t("tecnico non vede movimenti", (await as(u2, "authenticated", "select * from stock_movements")).rows.length === 0);
+t("un materiale con storico non si elimina", await fails(u1, "authenticated", `delete from materials where id='${mat.id}'`));
+await as(u1, "authenticated", `update materials set active = false where id='${mat.id}'`);
+t("materiale archiviato: niente movimenti", await fails(u1, "authenticated", `select stock_move('${mat.id}','${wh1}','carico',1,null,null)`));
 console.log(`\n${ok} ok, ${ko} falliti`); process.exit(ko ? 1 : 0);

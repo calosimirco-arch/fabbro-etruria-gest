@@ -4,7 +4,7 @@ import { it } from "date-fns/locale";
 import { Check, Plus, Printer, X } from "lucide-react";
 import { DocumentSheet } from "@/components/DocumentSheet";
 import { LinesEditor, emptyLine, parseLines, type FormLine } from "@/components/LinesEditor";
-import { useCancelInvoice, useClients, useCreateInvoice, useInvoices, useMarkInvoicePaid } from "@/hooks/useData";
+import { useCancelInvoice, useClients, useMaterials, useCreateInvoice, useInvoices, useMarkInvoicePaid } from "@/hooks/useData";
 import { INVOICE_LABELS, METHOD_LABELS, daysOverdue, effectiveStatus, summarizeInvoices, type EffectiveStatus } from "@/lib/invoices";
 import { formatCents, lineNet, quoteTotals } from "@/lib/quotes";
 import type { Invoice, PaymentMethod } from "@/types";
@@ -23,6 +23,7 @@ const dateOnly = (d: string) => format(new Date(`${d}T00:00:00`), "dd/MM/yyyy");
 export default function InvoicesPage() {
   const { data: invoices, isLoading } = useInvoices();
   const { data: clients } = useClients();
+  const { data: materials } = useMaterials();
   const create = useCreateInvoice();
   const pay = useMarkInvoicePaid();
   const cancel = useCancelInvoice();
@@ -82,7 +83,7 @@ export default function InvoicesPage() {
               <input className="field" placeholder="Oggetto (es. Intervento di manutenzione)" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
               <input className="field" type="date" title="Scadenza (se vuota: 30 giorni)" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
             </div>
-            <LinesEditor lines={lines} setLines={setLines} totals={parsed.totals} />
+            <LinesEditor lines={lines} setLines={setLines} totals={parsed.totals} materials={materials} />
             <textarea className="field h-20 py-2" placeholder="Note (facoltative)" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
             <div className="flex items-center justify-between gap-2"><p className="text-xs text-steel">Una fattura emessa non si modifica: si può solo annullare o segnare come pagata.</p><button className="btn" disabled={create.isPending}>Emetti la fattura</button></div>
             {error && <p className="border border-red-300 bg-red-50 p-2 text-sm text-red-700">{error}</p>}

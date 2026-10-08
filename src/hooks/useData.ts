@@ -60,3 +60,12 @@ export const useMarkInvoicePaid = () =>
   useInvalidatingMutation((v: { id: string; method: Parameters<typeof api.markInvoicePaid>[1] }) => api.markInvoicePaid(v.id, v.method), [["invoices"]], "Pagamento registrato");
 export const useCancelInvoice = () =>
   useInvalidatingMutation((v: { id: string; reason: string }) => api.cancelInvoice(v.id, v.reason), [["invoices"]], "Fattura annullata");
+
+export const useWarehouses = () => useQuery({ queryKey: ["warehouses"], queryFn: api.fetchWarehouses });
+export const useMaterials = () => useQuery({ queryKey: ["materials"], queryFn: api.fetchMaterials });
+export const useStockLevels = () => useQuery({ queryKey: ["stock-levels"], queryFn: api.fetchStockLevels });
+export const useMovements = () => useQuery({ queryKey: ["movements"], queryFn: api.fetchMovements });
+export const useCreateWarehouse = () => useInvalidatingMutation(api.createWarehouse, [["warehouses"]], "Magazzino creato");
+export const useSaveMaterial = () => useInvalidatingMutation(api.saveMaterial, [["materials"]], "Materiale salvato");
+export const useStockMove = () => useInvalidatingMutation(api.stockMove, [["stock-levels"], ["movements"]], "Movimento registrato");
+export const useStockTransfer = () => useInvalidatingMutation(api.stockTransfer, [["stock-levels"], ["movements"]], "Trasferimento registrato");

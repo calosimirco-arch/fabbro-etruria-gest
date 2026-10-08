@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
 import { CalendarDays, FileText, Mic, Package, Receipt, Truck, Users, Wrench, Megaphone, FolderOpen, HardHat, type LucideIcon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useInterventions, useSaraRequests } from "@/hooks/useData";
+import { useInterventions, useMaterials, useSaraRequests, useStockLevels } from "@/hooks/useData";
+import { lowStock } from "@/lib/inventory";
 
 interface Tile { label: string; icon: LucideIcon; to?: string; staffOnly?: boolean; note?: string }
 
@@ -12,7 +13,7 @@ const TILES: Tile[] = [
   { label: "Clienti", icon: Users, to: "/clienti", staffOnly: true },
   { label: "Preventivi", icon: FileText, to: "/preventivi", staffOnly: true },
   { label: "Fatture", icon: Receipt, to: "/fatture", staffOnly: true },
-  { label: "Magazzino", icon: Package },
+  { label: "Magazzino", icon: Package, to: "/magazzino", staffOnly: true },
   { label: "Agenda", icon: CalendarDays },
   { label: "Tecnici", icon: HardHat },
   { label: "Fornitori", icon: Truck },
@@ -25,6 +26,9 @@ export default function HomePage() {
   const staff = profile?.role !== "tecnico";
   const { data: interventions } = useInterventions();
   const { data: requests } = useSaraRequests();
+  const { data: materials } = useMaterials();
+  const { data: levels } = useStockLevels();
+  const lowCount = staff ? lowStock(materials ?? [], levels ?? []).length : 0;
   const open = (interventions ?? []).filter((i) => i.status !== "chiuso").length;
   const urgent = (interventions ?? []).filter((i) => i.status !== "chiuso" && i.priority === "critica").length;
   const pending = (requests ?? []).filter((r) => r.status === "in_attesa").length;
@@ -32,10 +36,11 @@ export default function HomePage() {
   return (
     <>
       <h1 className="text-xl font-semibold">Buongiorno, {profile?.full_name}</h1>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Interventi aperti" value={open} />
         <Stat label="Urgenti" value={urgent} tone={urgent ? "red" : undefined} />
         {staff && <Stat label="Da confermare" value={pending} tone={pending ? "amber" : undefined} />}
+        {staff && lowCount > 0 && <Stat label="Scorte basse" value={lowCount} tone="amber" />}
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
         {TILES.filter((t) => staff || !t.staffOnly).map((t) => {

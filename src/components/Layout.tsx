@@ -15,6 +15,7 @@ export function Layout() {
     { to: "/interventi", label: "Interventi", show: true },
     { to: "/preventivi", label: "Preventivi", show: staff },
     { to: "/fatture", label: "Fatture", show: staff },
+    { to: "/magazzino", label: "Magazzino", show: staff },
     { to: "/clienti", label: "Clienti", show: staff },
   ].filter((l) => l.show);
 
