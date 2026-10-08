@@ -22,6 +22,13 @@ e soprattutto **la risposta alle telefonate vere** (serve un numero e un provide
 Scarica `sara-gest.html` (qui nel repository), aprilo con un doppio clic in **Chrome o Edge** e, al primo avvio, incolla il *Project URL* e la chiave *anon public* del tuo progetto Supabase (Project Settings → API). I dati restano nel browser.
 Il file si rigenera con `npm run build:single` (poi copia `dist-single/index.html` in `sara-gest.html`). Limite: aperto da file, il browser chiede il permesso del microfono a ogni apertura.
 
+## Sul telefono (GitHub Pages)
+1. Su GitHub: repository → **Settings → Pages** → *Build and deployment*: **Deploy from a branch**, branch `main`, cartella **/docs** → **Save**.
+2. Dopo 1-2 minuti l'app è online su `https://<utente>.github.io/<repository>/`. Aprila dal computer e collega il progetto Supabase (una volta).
+3. Nella Home compare **«Usa Sara Gest sul telefono»**: copia il collegamento, invialo a te stesso e aprilo dal telefono. Il progetto si collega da solo; basta accedere. Poi, dal menu del browser, «Aggiungi a schermata Home».
+Online (HTTPS) il microfono funziona meglio che aprendo il file. Il collegamento contiene la chiave *anon public* (pubblica per natura), mai la *service_role*: tienilo comunque per te.
+`docs/index.html` è generato da `npm run build:single` (come `sara-gest.html`): non si modifica a mano.
+
 ## Installazione per sviluppatori
 1. Crea un progetto Supabase **nuovo** (solo per Sara Gest) ed esegui `supabase/schema.sql` nell'SQL Editor (rieseguibile).
 2. `cp .env.example .env` e inserisci indirizzo e chiave anon del progetto.

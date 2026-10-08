@@ -1,7 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
-import { readStoredConfig } from "@/lib/config";
+import { consumeConfigFromUrl, readStoredConfig } from "@/lib/config";
 import { cleanKey, normalizeSupabaseUrl } from "@/lib/env";
 
+// Un collegamento "?cfg=..." (dal telefono) configura il browser prima di tutto il resto.
+consumeConfigFromUrl();
 // Prima il file .env (sviluppo), poi quanto scritto nella schermata di avvio e salvato nel browser.
 const stored = readStoredConfig();
 const rawUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || stored?.url;
@@ -10,6 +12,9 @@ const key = cleanKey((import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefin
 
 /** true quando indirizzo e chiave ci sono e l'indirizzo e' valido: senza, l'app dice come sistemare il file .env. */
 export const isConfigured = Boolean(url && key);
+
+/** Configurazione in uso (per costruire il collegamento da aprire sul telefono). */
+export const activeConfig = url && key ? { url, key } : null;
 
 /** Cosa non va nel file .env (null = tutto a posto). */
 export const configProblem: string | null = !rawUrl?.trim() || !key

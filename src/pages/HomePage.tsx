@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { CalendarDays, FileText, Mic, Package, Receipt, Truck, Users, Wrench, Megaphone, FolderOpen, HardHat, type LucideIcon } from "lucide-react";
+import { PhoneLink } from "@/components/PhoneLink";
 import { useAuth } from "@/hooks/useAuth";
 import { useInterventions, useMaterials, useSaraRequests, useStockLevels } from "@/hooks/useData";
 import { lowStock } from "@/lib/inventory";
@@ -58,6 +59,7 @@ export default function HomePage() {
           );
         })}
       </div>
+      <PhoneLink />
     </>
   );
 }
